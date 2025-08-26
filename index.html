@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dungeons of Cozy</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'VT323', monospace;
+            background-color: #1a1a1a;
+            color: #00ff41;
+        }
+        #game-output span {
+            white-space: pre-wrap;
+        }
+        #game-input:focus {
+            outline: none;
+        }
+        .text-shadow {
+            text-shadow: 0 0 5px #00ff41, 0 0 10px #00ff41;
+        }
+        .box-shadow {
+            box-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41 inset;
+        }
+        /* Blinking cursor effect */
+        .blinking-cursor {
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            50% {
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+
+    <div id="game-container" class="w-full max-w-4xl h-[80vh] max-h-[800px] border-4 border-[#00ff41] rounded-lg p-6 flex flex-col box-shadow">
+        
+        <!-- Title Screen -->
+        <div id="title-screen" class="flex flex-col items-center justify-center h-full text-center">
+            <h1 class="text-6xl md:text-8xl font-bold text-shadow mb-8 animate-pulse">Dungeons of Cozy</h1>
+            <button id="play-button" class="bg-[#00ff41] text-black text-2xl px-8 py-4 rounded-md hover:bg-white hover:text-black transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-green-300">
+                Play Game
+            </button>
+        </div>
+
+        <!-- Game Interface (Initially Hidden) -->
+        <div id="game-interface" class="hidden h-full flex flex-col">
+            <div id="status-bar" class="border-b-2 border-[#00ff41] pb-2 mb-4 text-lg"></div>
+            <div id="game-output" class="flex-grow overflow-y-auto pr-2 text-xl">
+                <!-- Game text will be appended here -->
+            </div>
+            <div class="mt-4 flex items-center border-t-2 border-[#00ff41] pt-2">
+                <span class="text-2xl mr-2">&gt;</span>
+                <input type="text" id="game-input" class="bg-transparent text-[#00ff41] w-full text-2xl" autocomplete="off" autofocus>
+                <span class="blinking-cursor text-2xl">_</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const playButton = document.getElementById('play-button');
+        const titleScreen = document.getElementById('title-screen');
+        const gameInterface = document.getElementById('game-interface');
+        const gameOutput = document.getElementById('game-output');
+        const gameInput = document.getElementById('game-input');
+        const statusBar = document.getElementById('status-bar');
+
+        // --- Game State Variables ---
+        let gameState = {};
+        let saveData = {};
+        let actionCounter = 0;
+        let currentHandler = null; // Function to handle the next player input
+
+        // --- Core Game Functions ---
+        
+        // Utility to create a delay
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+        // Typewriter effect for printing text
+        async function slow_print(text, delay = 30) {
+            const line = document.createElement('span');
+            gameOutput.appendChild(line);
+            for (const char of text) {
+                line.textContent += char;
+                gameOutput.scrollTop = gameOutput.scrollHeight; // Auto-scroll
+                await sleep(delay);
+            }
+            gameOutput.appendChild(document.createElement('br'));
+        }
+        
+        // Clears the output screen
+        function clearOutput() {
+            gameOutput.innerHTML = '';
+        }
+
+        // Displays the player's inventory
+        function display_inventory() {
+            let inventoryHTML = '<br><span class="text-white">--- INVENTORY ---</span><br>';
+            if (!gameState.inventory || gameState.inventory.length === 0) {
+                inventoryHTML += '<span>Your inventory is empty.</span><br>';
+            } else {
+                const itemCounts = gameState.inventory.reduce((acc, item) => {
+                    acc[item] = (acc[item] || 0) + 1;
+                    return acc;
+                }, {});
+                for (const [item, count] of Object.entries(itemCounts)) {
+                    inventoryHTML += `<span>- ${item}${count > 1 ? ` x${count}` : ''}</span><br>`;
+                }
+            }
+            inventoryHTML += '<span class="text-white">-----------------</span><br><br>';
+            gameOutput.innerHTML += inventoryHTML;
+        }
+
+        // Updates the status bar display
+        function display_status_bar() {
+            let status = `| ${gameState.player_name} | Level: ${gameState.level} | Health: ${gameState.hp}/${gameState.max_hp} |`;
+            if (gameState.advancements && gameState.advancements.length > 0) {
+                status += `<br>| Advancements: ${gameState.advancements.join(', ')} |`;
+            }
+            statusBar.innerHTML = status.replace(/ /g, '&nbsp;');
+        }
+
+        // Saves the game state to a variable (could be extended to localStorage)
+        async function save_game(is_auto = false) {
+            saveData = JSON.parse(JSON.stringify(gameState)); // Deep copy
+            if (is_auto) {
+                await slow_print("\nCheckpoint reached.", 10);
+            } else {
+                await slow_print("\nGame saved successfully!");
+            }
+        }
+        
+        // Loads the game from save data
+        async function load_game() {
+            gameState = JSON.parse(JSON.stringify(saveData));
+            actionCounter = 0;
+            clearOutput();
+            await slow_print("\nLoading from last checkpoint...");
+            await sleep(1000);
+            
+            const game_locations = {
+                'dungeon_entrance': dungeon_entrance,
+                'first_encounter': first_encounter,
+                'handle_second_goblin': handle_second_goblin,
+                'after_first_fight': after_first_fight,
+                'sleeping_goblins_room': sleeping_goblins_room,
+                'waking_goblin_scenario': waking_goblin_scenario,
+                'floor_1_boss_encounter': floor_1_boss_encounter,
+                'floor_2_start': floor_2_start
+            };
+
+            if (game_locations[gameState.location]) {
+                game_locations[gameState.location]();
+            } else {
+                await slow_print("Error: Save data corrupted. Returning to main menu.");
+                main_menu();
+            }
+        }
+
+        // Handles using a health potion
+        async function use_potion(potion_name, heal_amount) {
+            const index = gameState.inventory.indexOf(potion_name);
+            if (index > -1) {
+                if (gameState.hp >= gameState.max_hp) {
+                    await slow_print("\nYour health is already full!");
+                    return;
+                }
+                gameState.inventory.splice(index, 1);
+                const potential_heal = gameState.max_hp - gameState.hp;
+                const actual_heal = Math.min(heal_amount, potential_heal);
+                gameState.hp += actual_heal;
+                
+                const potion_type = potion_name.split(" ")[0];
+                await slow_print(`\nYou used a ${potion_type} Potion and recovered ${actual_heal} HP.`);
+            } else {
+                const potion_type = potion_name.split(" ")[0];
+                await slow_print(`\nYou don't have any ${potion_type} Potions.`);
+            }
+        }
+
+        // Handles the game over sequence
+        async function game_over(message, title = "WASTED") {
+            await slow_print(`\n${message}`);
+            await sleep(1000);
+            
+            let deathScreenHTML = `<br><div class="text-center text-red-500 text-6xl font-bold text-shadow-red">`;
+            deathScreenHTML += `################<br>`;
+            deathScreenHTML += `# ${title.toUpperCase()} #<br>`;
+            deathScreenHTML += `################<br></div><br>`;
+            gameOutput.innerHTML += deathScreenHTML;
+
+            await slow_print("\nWhat will you do?\n1. Continue from last checkpoint\n2. Exit to main menu");
+            currentHandler = (choice) => {
+                if (choice === '1') {
+                    if (Object.keys(saveData).length > 0) {
+                        load_game();
+                    } else {
+                        slow_print("\nNo checkpoint found. Returning to main menu.").then(main_menu);
+                    }
+                } else if (choice === '2') {
+                    main_menu();
+                } else {
+                    slow_print("Invalid choice.").then(() => game_over(message, title));
+                }
+            };
+        }
+
+        // --- Input Handling ---
+        gameInput.addEventListener('keydown', async (e) => {
+            if (e.key === 'Enter') {
+                const input = gameInput.value.trim().toLowerCase();
+                gameInput.value = '';
+                
+                if (!input) return;
+
+                // Echo player input
+                const echo = document.createElement('span');
+                echo.className = 'text-gray-400';
+                echo.textContent = `> ${input}`;
+                gameOutput.appendChild(echo);
+                gameOutput.appendChild(document.createElement('br'));
+
+                // Handle global commands
+                if (input === '69') {
+                    display_inventory();
+                    return;
+                }
+                if (input === '0') {
+                    await save_game();
+                    main_menu();
+                    return;
+                }
+                if (input === '#floor_1_boss') {
+                    await slow_print("\nWarping to Floor 1 Boss...");
+                    floor_1_boss_encounter();
+                    return;
+                }
+                if (input === 'shp') {
+                    await use_potion("Small Health Potion (heals 25 HP)", 25);
+                    display_status_bar();
+                    return;
+                }
+                 if (input === 'mhp') {
+                    await use_potion("Medium Health Potion (heals 45 HP)", 45);
+                    display_status_bar();
+                    return;
+                }
+                 if (input === 'lhp') {
+                    await use_potion("Large Health Potion (heals 80 HP)", 80);
+                    display_status_bar();
+                    return;
+                }
+
+
+                // Handle story progression
+                if (currentHandler) {
+                    actionCounter++;
+                    if (actionCounter % 2 === 0) {
+                        await save_game(true);
+                    }
+                    currentHandler(input);
+                }
+            }
+        });
+
+        // --- Game Story Functions ---
+        
+        async function main_menu() {
+            clearOutput();
+            let menuText = "Welcome to Dungeons of Cozy\n\nPlease choose an option:\n1. Start New Game\n";
+            if (Object.keys(saveData).length > 0) {
+                menuText += "2. Continue\n";
+            }
+            menuText += "3. Exit";
+            await slow_print(menuText);
+
+            currentHandler = (choice) => {
+                if (choice === '1') {
+                    start_new_game();
+                } else if (choice === '2' && Object.keys(saveData).length > 0) {
+                    load_game();
+                } else if (choice === '3') {
+                    clearOutput();
+                    slow_print("Thanks for playing Dungeons of Cozy! Goodbye.");
+                    gameInput.disabled = true;
+                } else {
+                    slow_print("Invalid choice.").then(main_menu);
+                }
+            };
+        }
+
+        async function start_new_game() {
+            actionCounter = 0;
+            gameState = {
+                player_name: 'Rex',
+                level: 1,
+                hp: 100,
+                max_hp: 100,
+                inventory: ["Long Sword", "Chain Mail Armor", "Small Health Potion (heals 25 HP)"],
+                advancements: [],
+                location: 'dungeon_entrance',
+                floor_2_chest_looted: false
+            };
+            saveData = {};
+            clearOutput();
+
+            await slow_print("A message from the developers:\nAt any time, type '69' to check your inventory.\nType '0' to save your game and return to the main menu.\nType 'shp', 'mhp', or 'lhp' to use a health potion.");
+            await sleep(2000);
+
+            await slow_print("\nHello, you are an adventurer of the guild called '69 Hunters'.\nYour name is Rex.\nYou have been assigned to conquer a dungeon filled with goblins.\nTo win, you must defeat the Goblin Boss on the deepest level.");
+            await slow_print("\nDo you wish to continue? (y/n)");
+
+            currentHandler = (choice) => {
+                if (choice === 'y') {
+                    dungeon_entrance();
+                } else if (choice === 'n') {
+                    slow_print("\nReturning to the main menu...").then(main_menu);
+                } else {
+                    slow_print("Invalid input. Please enter 'y' for yes or 'n' for no.").then(start_new_game);
+                }
+            };
+        }
+        
+        async function dungeon_entrance(has_checked_inventory = false) {
+            gameState.location = 'dungeon_entrance';
+            display_status_bar();
+            clearOutput();
+            await slow_print("You travel towards the ominous dungeon entrance...");
+            
+            const prompt = () => {
+                let text = "\nYou are standing at the entrance of the dungeon. What do you do?\n1. Check your inventory\n2. Enter dungeon";
+                if (has_checked_inventory) {
+                    text += "\n3. Restock supplies";
+                }
+                slow_print(text);
+            };
+            
+            prompt();
+
+            currentHandler = (choice) => {
+                if (choice === '1') {
+                    display_inventory();
+                    dungeon_entrance(true); // Re-run with the 3rd option available
+                } else if (choice === '2') {
+                    slow_print("\nYou take a deep breath and step into the darkness of the dungeon...").then(first_encounter);
+                } else if (choice === '3' && has_checked_inventory) {
+                    slow_print("\nYou decide it's better to be safe than sorry and head back to the guild.").then(() => {
+                        gameState.inventory = [
+                            "Long Sword", "Iron Armor", "Bow and Arrows",
+                            "Small Health Potion (heals 25 HP)",
+                            "Medium Health Potion (heals 45 HP)",
+                            "Medium Health Potion (heals 45 HP)",
+                            "Large Health Potion (heals 80 HP)"
+                        ];
+                        slow_print("After gearing up, you return to the dungeon entrance, better prepared.").then(() => dungeon_entrance(true));
+                    });
+                } else {
+                    slow_print("Invalid choice.").then(() => dungeon_entrance(has_checked_inventory));
+                }
+            };
+        }
+
+        async function first_encounter() {
+            gameState.location = 'first_encounter';
+            display_status_bar();
+            clearOutput();
+            await slow_print("As you step inside, your eyes adjust to the dim light. You spot two goblin scouts.\nThey see you! One charges at you with a rusty dagger, while the other turns to run deeper into the dungeon.");
+            await slow_print("\nWhat is your move?\n1. Kill the charging goblin with your sword.\n2. Shoot the running goblin with your bow.\n3. Try to fight with your fists.");
+
+            currentHandler = (choice) => {
+                if (choice === '1') {
+                    slow_print("\nYou swiftly draw your long sword and parry the goblin's attack, dispatching it with a clean strike.").then(handle_second_goblin);
+                } else if (choice === '2') {
+                    gameState.hp = 0;
+                    if (gameState.inventory.includes("Bow and Arrows")) {
+                        game_over("You notch an arrow and take aim at the fleeing goblin, but the charging one is too fast.\nIt plunges its dagger into you before you can react.", "IMPALED");
+                    } else {
+                        game_over("You don't have a bow and arrows! The charging goblin takes advantage of your hesitation.\nIt plunges its dagger into you.", "UNPREPARED");
+                    }
+                } else if (choice === '3') {
+                    gameState.hp = 0;
+                    game_over("You raise your fists. You manage to overpower the charging goblin, but the fight is long and brutal.\nIn the meantime, the other scout has alerted a nearby warband. A horde of goblins rushes in and overwhelms you.", "OVERWHELMED");
+                } else {
+                    slow_print("Invalid choice. Think fast!").then(first_encounter);
+                }
+            };
+        }
+
+        async function handle_second_goblin() {
+            gameState.location = 'handle_second_goblin';
+            display_status_bar();
+            await slow_print("\nThe second goblin is still running away, about to disappear into a dark corridor.");
+            await slow_print("\nWhat do you do?\n1. Let it escape and leave the dungeon.\n2. Let it escape and continue deeper into the dungeon.\n3. Try to shoot it with your bow.");
+
+             currentHandler = (choice) => {
+                if (choice === '1') {
+                    slow_print("\nYou decide this is too much for one day and retreat. You have failed your mission.");
+                    gameInput.disabled = true;
+                } else if (choice === '2') {
+                    gameState.hp = 0;
+                    game_over("You press on, but it's not long before you hear the sounds of an alerted goblin patrol.\nThey surround and capture you.", "SURROUNDED");
+                } else if (choice === '3') {
+                     if (gameState.inventory.includes("Bow and Arrows")) {
+                        slow_print("\nYou quickly draw your bow. Your first arrow flies wide. The second just misses.\nWith your third shot, you find your mark! The goblin falls silently to the ground.").then(after_first_fight);
+                    } else {
+                        gameState.hp = 0;
+                        game_over("You don't have a bow! The goblin disappears into the darkness, and soon, alarms are raised.\nA horde of goblins rushes in and overwhelms you.", "OVERRUN");
+                    }
+                } else {
+                    slow_print("Invalid choice. It's getting away!").then(handle_second_goblin);
+                }
+            };
+        }
+
+        async function after_first_fight() {
+            gameState.location = 'after_first_fight';
+            display_status_bar();
+            await slow_print("\nYou've dealt with the scouts. The immediate area is clear.");
+            await slow_print("\nWhat now?\n1. Continue deeper into the dungeon.\n2. Hide the bodies of the goblin scouts.");
+
+            currentHandler = (choice) => {
+                if (choice === '1') {
+                    slow_print("\nYou step over the fallen goblins and venture further into the unknown...").then(sleeping_goblins_room);
+                } else if (choice === '2') {
+                    slow_print("\nYou drag the bodies into a dark alcove. As you do, you find a pouch on one of them.\nInside is a Large Health Potion! You add it to your inventory.").then(() => {
+                        gameState.inventory.push("Large Health Potion (heals 80 HP)");
+                        slow_print("\nWith the entrance secured, you venture further into the unknown...").then(sleeping_goblins_room);
+                    });
+                } else {
+                    slow_print("Invalid choice.").then(after_first_fight);
+                }
+            };
+        }
+
+        async function sleeping_goblins_room() {
+            gameState.location = 'sleeping_goblins_room';
+            display_status_bar();
+            clearOutput();
+            await slow_print("You proceed down a long, damp corridor. You begin to hear the faint sounds of snoring.\nYou peek into a large room and see five goblins sleeping soundly, scattered in small groups.\nThe exit to the next area is on the other side of the room. You have to go through them.");
+            await slow_print("\nWhat is your approach?\n1. Rush in with full force.\n2. Try to sneak past.");
+
+            currentHandler = (choice) => {
+                if (choice === '1') {
+                    gameState.hp = 0;
+                    game_over("You scream a war cry and charge in! You cut down the first two goblins before they can fully wake up.\nThe third falls quickly, but the last two manage to grab their weapons. You fight valiantly, but one of them gets behind you and lands a fatal blow.", "OUTNUMBERED");
+                } else if (choice === '2') {
+                    slow_print("\nYou hold your breath and begin to carefully step between the sleeping goblins.").then(waking_goblin_scenario);
+                } else {
+                    slow_print("Invalid choice.").then(sleeping_goblins_room);
+                }
+            };
+        }
+
+        async function waking_goblin_scenario() {
+            gameState.location = 'waking_goblin_scenario';
+            display_status_bar();
+            await slow_print("\nYou're almost across the room when you step on a loose stone. It makes a small *click*.\nOne of the goblins stirs, its eyes fluttering open.");
+            await slow_print("\nIt's waking up! What do you do?\n1. Kill the waking goblin.\n2. Ignore it and keep moving.");
+
+            currentHandler = (choice) => {
+                if (choice === '1') {
+                    if (gameState.inventory.includes("Bow and Arrows")) {
+                        slow_print("\nWithout hesitation, you notch an arrow. You let it fly, and it strikes the goblin squarely in the head.\nIt slumps back down without a sound. The others don't stir. You've made it.").then(floor_1_boss_encounter);
+                    } else {
+                        gameState.hp = 0;
+                        game_over("You rush to silence the goblin with your sword, but the sound of the scuffle wakes the others.\nThey quickly surround you, and you are overwhelmed.", "DISCOVERED");
+                    }
+                } else if (choice === '2') {
+                    slow_print("\nYou freeze for a moment, then decide to risk it and dash for the exit.\nThe goblin's eyes are still blurry with sleep. It sees your movement but is too groggy to react in time.\nYou slip through the door just as it lets out a confused grunt. You've made it.").then(floor_1_boss_encounter);
+                } else {
+                    slow_print("Invalid choice. It's about to shout!").then(waking_goblin_scenario);
+                }
+            };
+        }
+
+        async function floor_1_boss_encounter() {
+            gameState.location = 'floor_1_boss_encounter';
+            display_status_bar();
+            clearOutput();
+            await slow_print("You pass through the doorway and enter a large, circular chamber.\nIn the center of the room, a goblin in worn leather armor turns to face you. It's larger than the others, and ruthlessly shoves two terrified humans in front of it as a shield.\nIt's a Goblin Fighter, and it charges, using the humans as cover!");
+            await slow_print("\nWhat do you do?\n1. Kill the humans to get to the goblin.\n2. Search for a way to fight without killing the humans.");
+            
+            currentHandler = (choice) => {
+                if (choice === '1') boss_kill_humans_path();
+                else if (choice === '2') boss_save_humans_path();
+                else slow_print("Invalid choice.").then(floor_1_boss_encounter);
+            };
+        }
+
+        async function boss_kill_humans_path() {
+            await slow_print("\nWith a heavy heart, you decide the humans are a necessary sacrifice. You cut them down.\nThe Goblin Fighter, shocked at your ruthlessness, hesitates. Its shield is gone.");
+            await slow_print("\nThe goblin is open! What is your next move?\n1. Charge at him and aim for the neck.\n2. Aim for his sword.");
+
+            currentHandler = (choice) => {
+                if (choice === '1') {
+                    slow_print("\nYou lunge forward, but the goblin recovers and parries your attack! It thrusts its own sword deep into your gut.").then(async () => {
+                        gameState.hp -= 25;
+                        await slow_print("You take 25 damage! But you grab its sword arm, holding it in place.");
+                        await slow_print("\nIt's trapped! What do you do?\n1. Cut its head off.\n2. Torture it.");
+                        currentHandler = async (sub_choice) => {
+                            if (sub_choice === '1') {
+                                await slow_print("\nWith a final surge of strength, you swing your sword and take its head clean off. The fight is over.");
+                                await level_up();
+                                floor_2_start();
+                            } else if (sub_choice === '2') {
+                                await slow_print("\nYou decide to make an example of it. You disarm it, then brutally cut off one of its hands, then a leg.\nYou watch as it bleeds out, its screams echoing in the chamber. You feel a dark satisfaction.");
+                                if (!gameState.advancements.includes('Psycho')) {
+                                    gameState.advancements.push('Psycho');
+                                    await slow_print(">> Advancement Unlocked: Psycho <<");
+                                }
+                                await level_up();
+                                floor_2_start();
+                            } else {
+                                await slow_print("Invalid choice. Finish it!");
+                                currentHandler(sub_choice); // Re-ask
+                            }
+                        };
+                    });
+                } else if (choice === '2') {
+                    slow_print("\nYou swing your sword in a wide arc, clashing with the goblin's blade and knocking it from its hand.\nDisarmed, it resorts to its fists, landing four quick blows to your body.").then(async () => {
+                        gameState.hp -= 9;
+                        await slow_print("You take 9 damage!");
+                        await slow_print("\nIt's unarmed! How do you finish this?\n1. Fight with your fists.\n2. Kill it with your sword.");
+                        currentHandler = async (sub_choice) => {
+                            if (sub_choice === '1') {
+                                await slow_print("\nYou drop your sword and engage in a brutal fistfight. It's a tough brawl, but you overpower the goblin and finish it.");
+                                gameState.hp -= 9;
+                                await slow_print("You take another 9 damage in the struggle, but you are victorious.");
+                                await level_up();
+                                floor_2_start();
+                            } else if (sub_choice === '2') {
+                                await slow_print("\nYou don't waste the opportunity. You easily cut down the unarmed goblin.");
+                                await level_up();
+                                floor_2_start();
+                            } else {
+                                await slow_print("Invalid choice. End it now!");
+                                currentHandler(sub_choice); // Re-ask
+                            }
+                        };
+                    });
+                } else {
+                     slow_print("Invalid choice.").then(() => boss_kill_humans_path());
+                }
+            };
+        }
+
+        async function boss_save_humans_path() {
+            await slow_print("\nYou refuse to harm the innocents. You dodge the goblin's initial charge and scan your surroundings for an advantage.\nYou spot a rusty oil lantern hanging from a low chain.");
+            await slow_print("\nYou see the lantern. What's the plan?\n1. Spill the oil in the goblin's path.\n2. Throw the lantern at its face.");
+
+            currentHandler = async (choice) => {
+                 if (choice === '1') {
+                    await slow_print("\nYou grab the lantern and splash the slick oil on the floor in front of the charging goblin.\nIt slips and tumbles to the ground, losing its grip on the humans. You seize the moment and kill it while it's down.\nThe humans are safe!");
+                    await level_up();
+                    floor_2_start();
+                } else if (choice === '2') {
+                    await slow_print("\nYou grab the lantern and hurl it at the goblin. It smashes against its face, blinding it with hot oil.\nThe goblin shrieks and lets the humans go, swinging its sword wildly. One of its swings catches your arm.");
+                    gameState.hp -= 5;
+                    await slow_print("You take 5 damage! But you easily dispatch the blinded foe.\nThe humans are safe!");
+                    await level_up();
+                    floor_2_start();
+                } else {
+                    await slow_print("Invalid choice. Think fast!");
+                    boss_save_humans_path();
+                }
+            };
+        }
+        
+        async function floor_2_start() {
+            gameState.location = 'floor_2_start';
+            display_status_bar();
+            clearOutput();
+            await slow_print("With the Goblin Fighter defeated, the way is clear. A set of stone stairs leads down into further darkness.\nYou have reached Floor 2.");
+            
+            const prompt = async () => {
+                await slow_print("\nThe path ahead splits. Which way do you go?\n1. Left\n2. Right");
+            };
+
+            await prompt();
+
+            currentHandler = async (choice) => {
+                if (choice === '1') {
+                    if (!gameState.floor_2_chest_looted) {
+                        await slow_print("\nYou take the path to the left and find yourself in a small, dusty storage room.\nIn the corner sits an old, unlocked chest.\nYou open it and find a finely crafted Dagger and a strange, glowing scroll.");
+                        gameState.inventory.push("Dagger");
+                        await slow_print("You've added the Dagger to your inventory!");
+                        await slow_print("You pick up the scroll. It dissolves into light in your hands, and you feel a surge of vitality.");
+                        gameState.max_hp = 110;
+                        gameState.floor_2_chest_looted = true;
+                        await slow_print("Your maximum HP has increased to 110!");
+                        await slow_print("\nYou return to the split path.");
+                        floor_2_start(); // Loop back to the choice
+                    } else {
+                        await slow_print("\nYou've already looted the chest in this room. There's nothing else here.\nYou return to the split path.");
+                        floor_2_start(); // Loop back to the choice
+                    }
+                } else if (choice === '2') {
+                    await slow_print("\nYou take the path to the right, continuing down the main corridor.");
+                    floor_2_next_obstacle();
+                } else {
+                    await slow_print("Invalid choice. You must choose a path.");
+                    floor_2_start();
+                }
+            };
+        }
+
+        async function floor_2_next_obstacle() {
+            await slow_print("\n(The next obstacle of Floor 2 will be here.)");
+            await slow_print("(To be continued...)");
+            gameInput.disabled = true;
+        }
+
+
+        // --- Initial Game Start ---
+        playButton.addEventListener('click', () => {
+            titleScreen.classList.add('hidden');
+            gameInterface.classList.remove('hidden');
+            gameInput.focus();
+            main_menu();
+        });
+
+    </script>
+</body>
+</html>
