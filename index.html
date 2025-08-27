@@ -114,6 +114,7 @@
             }
             inventoryHTML += '<span class="text-white">-----------------</span><br><br>';
             gameOutput.innerHTML += inventoryHTML;
+            gameOutput.scrollTop = gameOutput.scrollHeight;
         }
 
         // Updates the status bar display
@@ -263,7 +264,10 @@
                     if (actionCounter % 2 === 0) {
                         await save_game(true);
                     }
-                    currentHandler(input);
+                    const handler = currentHandler;
+                    currentHandler = null; // Prevent multiple inputs while processing
+                    await handler(input);
+                    if (gameInput.disabled) currentHandler = null;
                 }
             }
         });
@@ -328,28 +332,100 @@
         
         async function dungeon_entrance(has_checked_inventory = false) {
             gameState.location = 'dungeon_entrance';
-            display_status_bar();
             clearOutput();
+            display_status_bar();
             await slow_print("You travel towards the ominous dungeon entrance...");
             
-            const prompt = () => {
+            const show_options = async () => {
                 let text = "\nYou are standing at the entrance of the dungeon. What do you do?\n1. Check your inventory\n2. Enter dungeon";
                 if (has_checked_inventory) {
                     text += "\n3. Restock supplies";
                 }
-                slow_print(text);
+                await slow_print(text);
             };
-            
-            prompt();
 
-            currentHandler = (choice) => {
+            await show_options();
+
+            currentHandler = async (choice) => {
                 if (choice === '1') {
                     display_inventory();
-                    dungeon_entrance(true); // Re-run with the 3rd option available
+                    await show_options(true); // Re-show options after displaying inventory
+                    currentHandler = (newChoice) => dungeon_entrance_handler(newChoice, true); // Wait for new input
                 } else if (choice === '2') {
-                    slow_print("\nYou take a deep breath and step into the darkness of the dungeon...").then(first_encounter);
+                    await slow_print("\nYou take a deep breath and step into the darkness of the dungeon...");
+                    first_encounter();
                 } else if (choice === '3' && has_checked_inventory) {
-                    slow_print("\nYou decide it's better to be safe than sorry and head back to the guild.").then(() => {
+                    await slow_print("\nYou decide it's better to be safe than sorry and head back to the guild.");
+                    gameState.inventory = [
+                        "Long Sword", "Iron Armor", "Bow and Arrows",
+                        "Small Health Potion (heals 25 HP)",
+                        "Medium Health Potion (heals 45 HP)",
+                        "Medium Health Potion (heals 45 HP)",
+                        "Large Health Potion (heals 80 HP)"
+                    ];
+                    await slow_print("After gearing up, you return to the dungeon entrance, better prepared.");
+                    dungeon_entrance(true); // Re-enter the scene cleanly, preserving state
+                } else {
+                    await slow_print("Invalid choice.");
+                    await show_options(has_checked_inventory);
+                    currentHandler = (newChoice) => dungeon_entrance_handler(newChoice, has_checked_inventory);
+                }
+            };
+            
+            // Create a wrapper handler to manage state
+            const dungeon_entrance_handler = (choice, checked) => {
+                currentHandler = null; // Clear handler to prevent re-triggering
+                dungeon_entrance(checked)[currentHandler](choice);
+            };
+
+            // Initial call to the handler
+            const initial_handler = async (choice) => {
+                 if (choice === '1') {
+                    display_inventory();
+                    await show_options();
+                    currentHandler = (newChoice) => dungeon_entrance_handler(newChoice, true);
+                } else if (choice === '2') {
+                    await slow_print("\nYou take a deep breath and step into the darkness of the dungeon...");
+                    first_encounter();
+                } else if (choice === '3' && has_checked_inventory) {
+                     await slow_print("\nYou decide it's better to be safe than sorry and head back to the guild.");
+                    gameState.inventory = [
+                        "Long Sword", "Iron Armor", "Bow and Arrows",
+                        "Small Health Potion (heals 25 HP)",
+                        "Medium Health Potion (heals 45 HP)",
+                        "Medium Health Potion (heals 45 HP)",
+                        "Large Health Potion (heals 80 HP)"
+                    ];
+                    await slow_print("After gearing up, you return to the dungeon entrance, better prepared.");
+                    dungeon_entrance(true);
+                } else {
+                    await slow_print("Invalid choice.");
+                    await show_options();
+                    currentHandler = initial_handler;
+                }
+            };
+            
+            // Re-written dungeon_entrance to be cleaner
+            clearOutput();
+            display_status_bar();
+            await slow_print("You travel towards the ominous dungeon entrance...");
+            
+            const run_scene = async (checked_inv) => {
+                let text = "\nYou are standing at the entrance of the dungeon. What do you do?\n1. Check your inventory\n2. Enter dungeon";
+                if (checked_inv) {
+                    text += "\n3. Restock supplies";
+                }
+                await slow_print(text);
+
+                currentHandler = async (choice) => {
+                    if (choice === '1') {
+                        display_inventory();
+                        run_scene(true); // Re-run scene with inventory now checked
+                    } else if (choice === '2') {
+                        await slow_print("\nYou take a deep breath and step into the darkness of the dungeon...");
+                        first_encounter();
+                    } else if (choice === '3' && checked_inv) {
+                        await slow_print("\nYou decide it's better to be safe than sorry and head back to the guild.");
                         gameState.inventory = [
                             "Long Sword", "Iron Armor", "Bow and Arrows",
                             "Small Health Potion (heals 25 HP)",
@@ -357,13 +433,17 @@
                             "Medium Health Potion (heals 45 HP)",
                             "Large Health Potion (heals 80 HP)"
                         ];
-                        slow_print("After gearing up, you return to the dungeon entrance, better prepared.").then(() => dungeon_entrance(true));
-                    });
-                } else {
-                    slow_print("Invalid choice.").then(() => dungeon_entrance(has_checked_inventory));
-                }
+                        await slow_print("After gearing up, you return to the dungeon entrance, better prepared.");
+                        run_scene(true); // Re-run scene, keeping inventory checked
+                    } else {
+                        await slow_print("Invalid choice.");
+                        run_scene(checked_inv); // Re-run with same state
+                    }
+                };
             };
+            run_scene(false); // Initial call
         }
+
 
         async function first_encounter() {
             gameState.location = 'first_encounter';
@@ -594,17 +674,20 @@
                         gameState.floor_2_chest_looted = true;
                         await slow_print("Your maximum HP has increased to 110!");
                         await slow_print("\nYou return to the split path.");
-                        floor_2_start(); // Loop back to the choice
+                        await prompt(); // Re-show options
+                        currentHandler = arguments.callee; // Keep the same handler
                     } else {
                         await slow_print("\nYou've already looted the chest in this room. There's nothing else here.\nYou return to the split path.");
-                        floor_2_start(); // Loop back to the choice
+                        await prompt(); // Re-show options
+                        currentHandler = arguments.callee; // Keep the same handler
                     }
                 } else if (choice === '2') {
                     await slow_print("\nYou take the path to the right, continuing down the main corridor.");
                     floor_2_next_obstacle();
                 } else {
                     await slow_print("Invalid choice. You must choose a path.");
-                    floor_2_start();
+                    await prompt();
+                    currentHandler = arguments.callee;
                 }
             };
         }
