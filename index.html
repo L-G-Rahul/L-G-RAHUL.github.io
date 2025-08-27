@@ -147,7 +147,23 @@
         
         // Loads the game from save data
         async function load_game() {
-            gameState = JSON.parse(JSON.stringify(saveData));
+            let loadedState = JSON.parse(JSON.stringify(saveData));
+            
+            // *** FIXED: Create a default state and merge the loaded state onto it ***
+            // This ensures backward compatibility with old saves that are missing new properties.
+            const defaultState = {
+                player_name: 'Rex',
+                level: 1,
+                hp: 100,
+                max_hp: 100,
+                inventory: [],
+                advancements: [],
+                location: 'dungeon_entrance',
+                floor_2_chest_looted: false
+            };
+
+            gameState = { ...defaultState, ...loadedState };
+
             actionCounter = 0;
             clearOutput();
             await slow_print("\nLoading from last checkpoint...");
