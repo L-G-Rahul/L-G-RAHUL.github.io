@@ -149,8 +149,6 @@
         async function load_game() {
             let loadedState = JSON.parse(JSON.stringify(saveData));
             
-            // *** FIXED: Create a default state and merge the loaded state onto it ***
-            // This ensures backward compatibility with old saves that are missing new properties.
             const defaultState = {
                 player_name: 'Rex',
                 level: 1,
@@ -399,7 +397,7 @@
         async function first_encounter() {
             gameState.location = 'first_encounter';
             display_status_bar();
-            clearOutput();
+            // *** FIXED: No longer clearing the screen here ***
             await slow_print("As you step inside, your eyes adjust to the dim light. You spot two goblin scouts.\nThey see you! One charges at you with a rusty dagger, while the other turns to run deeper into the dungeon.");
             await slow_print("\nWhat is your move?\n1. Kill the charging goblin with your sword.\n2. Shoot the running goblin with your bow.\n3. Try to fight with your fists.");
 
@@ -470,8 +468,8 @@
 
         async function sleeping_goblins_room() {
             gameState.location = 'sleeping_goblins_room';
+            clearOutput(); // Clear here for a new room
             display_status_bar();
-            clearOutput();
             await slow_print("You proceed down a long, damp corridor. You begin to hear the faint sounds of snoring.\nYou peek into a large room and see five goblins sleeping soundly, scattered in small groups.\nThe exit to the next area is on the other side of the room. You have to go through them.");
             await slow_print("\nWhat is your approach?\n1. Rush in with full force.\n2. Try to sneak past.");
 
@@ -511,8 +509,8 @@
 
         async function floor_1_boss_encounter() {
             gameState.location = 'floor_1_boss_encounter';
+            clearOutput(); // Clear for boss room
             display_status_bar();
-            clearOutput();
             await slow_print("You pass through the doorway and enter a large, circular chamber.\nIn the center of the room, a goblin in worn leather armor turns to face you. It's larger than the others, and ruthlessly shoves two terrified humans in front of it as a shield.\nIt's a Goblin Fighter, and it charges, using the humans as cover!");
             await slow_print("\nWhat do you do?\n1. Kill the humans to get to the goblin.\n2. Search for a way to fight without killing the humans.");
             
@@ -608,8 +606,8 @@
         
         async function floor_2_start() {
             gameState.location = 'floor_2_start';
+            clearOutput(); // Clear for new floor
             display_status_bar();
-            clearOutput();
             await slow_print("With the Goblin Fighter defeated, the way is clear. A set of stone stairs leads down into further darkness.\nYou have reached Floor 2.");
             
             const run_scene = async () => {
