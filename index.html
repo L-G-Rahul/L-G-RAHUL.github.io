@@ -135,6 +135,15 @@
                 await slow_print("\nGame saved successfully!");
             }
         }
+
+        
+        async function level_up() {
+            gameState.level += 1;
+            await slow_print("\n*************************");
+            await slow_print(`** LEVEL UP! You are now Level ${gameState.level}! **`);
+            await slow_print("*************************");
+            await sleep(2000);
+        }
         
         // Loads the game from save data
         async function load_game() {
@@ -330,82 +339,8 @@
             };
         }
         
-        async function dungeon_entrance(has_checked_inventory = false) {
+        async function dungeon_entrance() {
             gameState.location = 'dungeon_entrance';
-            clearOutput();
-            display_status_bar();
-            await slow_print("You travel towards the ominous dungeon entrance...");
-            
-            const show_options = async () => {
-                let text = "\nYou are standing at the entrance of the dungeon. What do you do?\n1. Check your inventory\n2. Enter dungeon";
-                if (has_checked_inventory) {
-                    text += "\n3. Restock supplies";
-                }
-                await slow_print(text);
-            };
-
-            await show_options();
-
-            currentHandler = async (choice) => {
-                if (choice === '1') {
-                    display_inventory();
-                    await show_options(true); // Re-show options after displaying inventory
-                    currentHandler = (newChoice) => dungeon_entrance_handler(newChoice, true); // Wait for new input
-                } else if (choice === '2') {
-                    await slow_print("\nYou take a deep breath and step into the darkness of the dungeon...");
-                    first_encounter();
-                } else if (choice === '3' && has_checked_inventory) {
-                    await slow_print("\nYou decide it's better to be safe than sorry and head back to the guild.");
-                    gameState.inventory = [
-                        "Long Sword", "Iron Armor", "Bow and Arrows",
-                        "Small Health Potion (heals 25 HP)",
-                        "Medium Health Potion (heals 45 HP)",
-                        "Medium Health Potion (heals 45 HP)",
-                        "Large Health Potion (heals 80 HP)"
-                    ];
-                    await slow_print("After gearing up, you return to the dungeon entrance, better prepared.");
-                    dungeon_entrance(true); // Re-enter the scene cleanly, preserving state
-                } else {
-                    await slow_print("Invalid choice.");
-                    await show_options(has_checked_inventory);
-                    currentHandler = (newChoice) => dungeon_entrance_handler(newChoice, has_checked_inventory);
-                }
-            };
-            
-            // Create a wrapper handler to manage state
-            const dungeon_entrance_handler = (choice, checked) => {
-                currentHandler = null; // Clear handler to prevent re-triggering
-                dungeon_entrance(checked)[currentHandler](choice);
-            };
-
-            // Initial call to the handler
-            const initial_handler = async (choice) => {
-                 if (choice === '1') {
-                    display_inventory();
-                    await show_options();
-                    currentHandler = (newChoice) => dungeon_entrance_handler(newChoice, true);
-                } else if (choice === '2') {
-                    await slow_print("\nYou take a deep breath and step into the darkness of the dungeon...");
-                    first_encounter();
-                } else if (choice === '3' && has_checked_inventory) {
-                     await slow_print("\nYou decide it's better to be safe than sorry and head back to the guild.");
-                    gameState.inventory = [
-                        "Long Sword", "Iron Armor", "Bow and Arrows",
-                        "Small Health Potion (heals 25 HP)",
-                        "Medium Health Potion (heals 45 HP)",
-                        "Medium Health Potion (heals 45 HP)",
-                        "Large Health Potion (heals 80 HP)"
-                    ];
-                    await slow_print("After gearing up, you return to the dungeon entrance, better prepared.");
-                    dungeon_entrance(true);
-                } else {
-                    await slow_print("Invalid choice.");
-                    await show_options();
-                    currentHandler = initial_handler;
-                }
-            };
-            
-            // Re-written dungeon_entrance to be cleaner
             clearOutput();
             display_status_bar();
             await slow_print("You travel towards the ominous dungeon entrance...");
@@ -420,7 +355,7 @@
                 currentHandler = async (choice) => {
                     if (choice === '1') {
                         display_inventory();
-                        run_scene(true); // Re-run scene with inventory now checked
+                        run_scene(true);
                     } else if (choice === '2') {
                         await slow_print("\nYou take a deep breath and step into the darkness of the dungeon...");
                         first_encounter();
@@ -434,14 +369,14 @@
                             "Large Health Potion (heals 80 HP)"
                         ];
                         await slow_print("After gearing up, you return to the dungeon entrance, better prepared.");
-                        run_scene(true); // Re-run scene, keeping inventory checked
+                        run_scene(true);
                     } else {
                         await slow_print("Invalid choice.");
-                        run_scene(checked_inv); // Re-run with same state
+                        run_scene(checked_inv);
                     }
                 };
             };
-            run_scene(false); // Initial call
+            run_scene(false);
         }
 
 
@@ -581,6 +516,7 @@
                     slow_print("\nYou lunge forward, but the goblin recovers and parries your attack! It thrusts its own sword deep into your gut.").then(async () => {
                         gameState.hp -= 25;
                         await slow_print("You take 25 damage! But you grab its sword arm, holding it in place.");
+                        display_status_bar();
                         await slow_print("\nIt's trapped! What do you do?\n1. Cut its head off.\n2. Torture it.");
                         currentHandler = async (sub_choice) => {
                             if (sub_choice === '1') {
@@ -605,12 +541,14 @@
                     slow_print("\nYou swing your sword in a wide arc, clashing with the goblin's blade and knocking it from its hand.\nDisarmed, it resorts to its fists, landing four quick blows to your body.").then(async () => {
                         gameState.hp -= 9;
                         await slow_print("You take 9 damage!");
+                        display_status_bar();
                         await slow_print("\nIt's unarmed! How do you finish this?\n1. Fight with your fists.\n2. Kill it with your sword.");
                         currentHandler = async (sub_choice) => {
                             if (sub_choice === '1') {
                                 await slow_print("\nYou drop your sword and engage in a brutal fistfight. It's a tough brawl, but you overpower the goblin and finish it.");
                                 gameState.hp -= 9;
                                 await slow_print("You take another 9 damage in the struggle, but you are victorious.");
+                                display_status_bar();
                                 await level_up();
                                 floor_2_start();
                             } else if (sub_choice === '2') {
@@ -642,6 +580,7 @@
                     await slow_print("\nYou grab the lantern and hurl it at the goblin. It smashes against its face, blinding it with hot oil.\nThe goblin shrieks and lets the humans go, swinging its sword wildly. One of its swings catches your arm.");
                     gameState.hp -= 5;
                     await slow_print("You take 5 damage! But you easily dispatch the blinded foe.\nThe humans are safe!");
+                    display_status_bar();
                     await level_up();
                     floor_2_start();
                 } else {
@@ -661,9 +600,7 @@
                 await slow_print("\nThe path ahead splits. Which way do you go?\n1. Left\n2. Right");
             };
 
-            await prompt();
-
-            currentHandler = async (choice) => {
+            const handler = async (choice) => {
                 if (choice === '1') {
                     if (!gameState.floor_2_chest_looted) {
                         await slow_print("\nYou take the path to the left and find yourself in a small, dusty storage room.\nIn the corner sits an old, unlocked chest.\nYou open it and find a finely crafted Dagger and a strange, glowing scroll.");
@@ -673,13 +610,14 @@
                         gameState.max_hp = 110;
                         gameState.floor_2_chest_looted = true;
                         await slow_print("Your maximum HP has increased to 110!");
+                        display_status_bar(); // FIX: Refresh status bar
                         await slow_print("\nYou return to the split path.");
-                        await prompt(); // Re-show options
-                        currentHandler = arguments.callee; // Keep the same handler
+                        await prompt(); 
+                        currentHandler = handler; 
                     } else {
                         await slow_print("\nYou've already looted the chest in this room. There's nothing else here.\nYou return to the split path.");
-                        await prompt(); // Re-show options
-                        currentHandler = arguments.callee; // Keep the same handler
+                        await prompt(); 
+                        currentHandler = handler; 
                     }
                 } else if (choice === '2') {
                     await slow_print("\nYou take the path to the right, continuing down the main corridor.");
@@ -687,9 +625,12 @@
                 } else {
                     await slow_print("Invalid choice. You must choose a path.");
                     await prompt();
-                    currentHandler = arguments.callee;
+                    currentHandler = handler;
                 }
             };
+            
+            await prompt();
+            currentHandler = handler;
         }
 
         async function floor_2_next_obstacle() {
