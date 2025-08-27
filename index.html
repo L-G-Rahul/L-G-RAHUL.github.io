@@ -596,41 +596,37 @@
             clearOutput();
             await slow_print("With the Goblin Fighter defeated, the way is clear. A set of stone stairs leads down into further darkness.\nYou have reached Floor 2.");
             
-            const prompt = async () => {
+            const run_scene = async () => {
                 await slow_print("\nThe path ahead splits. Which way do you go?\n1. Left\n2. Right");
-            };
 
-            const handler = async (choice) => {
-                if (choice === '1') {
-                    if (!gameState.floor_2_chest_looted) {
-                        await slow_print("\nYou take the path to the left and find yourself in a small, dusty storage room.\nIn the corner sits an old, unlocked chest.\nYou open it and find a finely crafted Dagger and a strange, glowing scroll.");
-                        gameState.inventory.push("Dagger");
-                        await slow_print("You've added the Dagger to your inventory!");
-                        await slow_print("You pick up the scroll. It dissolves into light in your hands, and you feel a surge of vitality.");
-                        gameState.max_hp = 110;
-                        gameState.floor_2_chest_looted = true;
-                        await slow_print("Your maximum HP has increased to 110!");
-                        display_status_bar(); // FIX: Refresh status bar
-                        await slow_print("\nYou return to the split path.");
-                        await prompt(); 
-                        currentHandler = handler; 
+                currentHandler = async (choice) => {
+                    if (choice === '1') {
+                        if (!gameState.floor_2_chest_looted) {
+                            await slow_print("\nYou take the path to the left and find yourself in a small, dusty storage room.\nIn the corner sits an old, unlocked chest.\nYou open it and find a finely crafted Dagger and a strange, glowing scroll.");
+                            gameState.inventory.push("Dagger");
+                            await slow_print("You've added the Dagger to your inventory!");
+                            await slow_print("You pick up the scroll. It dissolves into light in your hands, and you feel a surge of vitality.");
+                            gameState.max_hp = 110;
+                            gameState.floor_2_chest_looted = true;
+                            await slow_print("Your maximum HP has increased to 110!");
+                            display_status_bar();
+                            await slow_print("\nYou return to the split path.");
+                            run_scene(); 
+                        } else {
+                            await slow_print("\nYou've already looted the chest in this room. There's nothing else here.\nYou return to the split path.");
+                            run_scene();
+                        }
+                    } else if (choice === '2') {
+                        await slow_print("\nYou take the path to the right, continuing down the main corridor.");
+                        floor_2_next_obstacle();
                     } else {
-                        await slow_print("\nYou've already looted the chest in this room. There's nothing else here.\nYou return to the split path.");
-                        await prompt(); 
-                        currentHandler = handler; 
+                        await slow_print("Invalid choice. You must choose a path.");
+                        run_scene();
                     }
-                } else if (choice === '2') {
-                    await slow_print("\nYou take the path to the right, continuing down the main corridor.");
-                    floor_2_next_obstacle();
-                } else {
-                    await slow_print("Invalid choice. You must choose a path.");
-                    await prompt();
-                    currentHandler = handler;
-                }
+                };
             };
             
-            await prompt();
-            currentHandler = handler;
+            run_scene();
         }
 
         async function floor_2_next_obstacle() {
